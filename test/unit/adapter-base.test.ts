@@ -169,7 +169,7 @@ test('模型路由：命令行 > 档位表格子（裸 slug）', () => {
   const legacy = resolveTier(cfg, 'gemini', 'plan');
   assert.equal(legacy.model, 'gemini-3.8-flash-high');
   assert.equal(legacy.tierSource, 'legacy');
-  assert.equal(resolveTier(cfg, 'glm', 'code').model, 'GLM-5.3');
+  assert.equal(resolveTier(cfg, 'glm', 'code').model, 'GLM-5.4');
 });
 
 test('模型路由：档位表缺该阶段时返回 null 而非瞎猜', () => {

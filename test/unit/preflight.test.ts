@@ -53,7 +53,7 @@ function freshProbe(cfg: Config): void {
   zcode.entrypoint = '/nonexistent/zcode.cjs';
   zcode.version = '0.16.5';
   zcode.probed_at = now;
-  zcode.models = ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
+  zcode.models = ['GLM-5.4', 'GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.4', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'];
   zcode.model_id_form = 'bigmodel/GLM-5.3';
   zcode.readonly_flags = ['--mode plan', '--disallowed-tools Write,Edit'];
   /*

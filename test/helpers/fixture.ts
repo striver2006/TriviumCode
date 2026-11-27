@@ -273,7 +273,7 @@ export async function seedFakeProbes(root: string, over: Record<string, unknown>
       zcode: {
         ...common(await fs.realpath(fakeZcode)),
         version_probe: { runner: 'node', args: ['version'], extract: String.raw`(\d+\.\d+\.\d+)` },
-        models: ['GLM-5.3'],
+        models: ['GLM-5.4', 'GLM-5.3'],
         readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
         response_field: '.response',
       },
@@ -302,7 +302,7 @@ export async function seedFakeProbes(root: string, over: Record<string, unknown>
   doc['profiles'] = {
     default: {
       gemini: { plan: 'gemini-3.8-flash-high' },
-      glm: { plan: 'GLM-5.3' },
+      glm: { plan: 'GLM-5.4' },
       codex: { plan: 'qwen3.8-max' },
     },
   };

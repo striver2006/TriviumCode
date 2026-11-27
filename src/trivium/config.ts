@@ -351,7 +351,7 @@ export function defaultConfig(): Config {
     profiles: {
       default: {
         gemini: { plan: 'gemini-3.8-flash-high', code: 'gemini-3.8-flash-high', bug: 'gemini-3.8-flash-high' },
-        glm: { plan: 'GLM-5.3', code: 'GLM-5.3', bug: 'GLM-5.3' },
+        glm: { plan: 'GLM-5.4', code: 'GLM-5.4', bug: 'GLM-5.4' },
         /*
          * codex 缺省取 **flash**（EV-130，用户 2026-09-26 定候选 ①：`-p qwen -m qwen3.8-flash`）。
          *

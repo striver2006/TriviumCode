@@ -94,6 +94,12 @@ effort，pro 档引用 high，实际配置请求 `qwen4-max` 与 `xhigh`。已�
 的 Schema 和九个档位与阶段组合。默认档计划审 `20261119T131531Z` 回读 `qwen4-max`，
 生效 effort 与供应商回读均为空。flash、pro 的真实审查未测。
 
+2026-11-27，产品内置默认配置与本仓共享配置将 GLM 的 `default` / `pro` 档切换为
+`GLM-5.4`（`flash` 档维持 `GLM-5.3-Flash`，ZCode 0.18.0 仍无独立 effort CLI 旗标），
+并改进 `seedZcodeBuiltinCache`：当宿主机已有旧版 `0.0.0-dev` 缓存而其它版本存在更高
+`revision` 时按 endpoint 升级同步。本机 `~/.zcode/cli/config.json` 未含 `GLM-5.4` 时
+真实探活未测。
+
 旧主题的 Driver 由该阶段已有运行留痕优先判定，不能用修改配置来迁移历史作者。
 已有他家工件的阶段不强行重新认领；新工作使用新主题或尚未被使用的阶段。
 

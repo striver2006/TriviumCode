@@ -49,7 +49,7 @@ function freshProbe(cfg: Config): void {
   const zcode = cfg.probe.cli.zcode!;
   Object.assign(zcode, {
     entrypoint: process.execPath, version: '0.16.5', probed_at: now,
-    models: ['GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'],
+    models: ['GLM-5.4', 'GLM-5.3', 'GLM-5.3-Flash', 'bigmodel/GLM-5.4', 'bigmodel/GLM-5.3', 'bigmodel/GLM-5.3-Flash'],
     model_id_form: 'bigmodel/GLM-5.3', readonly_flags: ['--mode plan', '--disallowed-tools Write,Edit'],
     response_field: '.response',
   });

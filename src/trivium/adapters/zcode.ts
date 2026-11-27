@@ -1097,7 +1097,15 @@ export async function seedZcodeBuiltinCache(
   await copyDir(srcRoot, dstRoot);
 
   // `agent/zcode.cjs` 的编译期 ZCODE_VERSION 常为 `0.0.0-dev`，而交互端 `bin/zcode.mjs` 为发行版号（如 `4.0.0`）；
-  // 若宿主机仅由交互端缓存过 `<platform>/<release>/endpoint-*/`，为 `0.0.0-dev` 补齐最高 revision 的同 endpoint 缓存。
+  // 若宿主机仅由交互端缓存过 `<platform>/<release>/endpoint-*/`，或 `0.0.0-dev` 修订低于其它版本，按 endpoint 补齐/升级最高 revision 的缓存。
+  async function readBuiltinRevision(epDir: string): Promise<number> {
+    try {
+      const raw = JSON.parse(await fs.readFile(path.join(epDir, 'zcode-builtin.json'), 'utf8')) as { revision?: unknown };
+      return typeof raw.revision === 'number' ? raw.revision : -1;
+    } catch {
+      return -1;
+    }
+  }
   let platforms: string[] = [];
   try {
     platforms = (await fs.readdir(dstRoot, { withFileTypes: true }))
@@ -1109,8 +1117,7 @@ export async function seedZcodeBuiltinCache(
   for (const plat of platforms) {
     const platDir = path.join(dstRoot, plat);
     const devDir = path.join(platDir, '0.0.0-dev');
-    if (await exists(devDir)) continue;
-    let bestByEndpoint = new Map<string, { rev: number; dir: string }>();
+    const bestByEndpoint = new Map<string, { rev: number; dir: string }>();
     let versions;
     try {
       versions = await fs.readdir(platDir, { withFileTypes: true });
@@ -1129,18 +1136,18 @@ export async function seedZcodeBuiltinCache(
       for (const ep of endpoints) {
         if (!ep.isDirectory()) continue;
         const epDir = path.join(verDir, ep.name);
-        try {
-          const raw = JSON.parse(await fs.readFile(path.join(epDir, 'zcode-builtin.json'), 'utf8')) as { revision?: unknown };
-          const rev = typeof raw.revision === 'number' ? raw.revision : -1;
-          const prev = bestByEndpoint.get(ep.name);
-          if (!prev || rev > prev.rev) bestByEndpoint.set(ep.name, { rev, dir: epDir });
-        } catch {
-          /* 忽略损坏或缺失条目 */
-        }
+        if (!(await exists(path.join(epDir, 'zcode-builtin.json')))) continue;
+        const rev = await readBuiltinRevision(epDir);
+        const prev = bestByEndpoint.get(ep.name);
+        if (!prev || rev > prev.rev) bestByEndpoint.set(ep.name, { rev, dir: epDir });
       }
     }
-    for (const [epName, { dir }] of bestByEndpoint) {
-      await copyDir(dir, path.join(devDir, epName));
+    for (const [epName, { rev, dir }] of bestByEndpoint) {
+      const targetEpDir = path.join(devDir, epName);
+      const hasTarget = await exists(path.join(targetEpDir, 'zcode-builtin.json'));
+      if (!hasTarget || rev > (await readBuiltinRevision(targetEpDir))) {
+        await copyDir(dir, targetEpDir);
+      }
     }
   }
 }

@@ -72,9 +72,9 @@ profiles:
       code: { tier: medium }
       bug: { tier: medium }
     glm:
-      plan: GLM-5.3
-      code: GLM-5.3
-      bug: GLM-5.3
+      plan: GLM-5.4
+      code: GLM-5.4
+      bug: GLM-5.4
     # Codex 默认走官方 Sol，显式请求 medium，避免继承本机基底的 high。
     codex:
       plan: { model: gpt-6.1-sol, effort: high }
@@ -106,7 +106,7 @@ profiles:
       bug: qwen3.8-flash
   # pro 档：按需 `--profile pro` 单次切档，按侧选择更高档模型或 effort。
   # Gemini pro 通过 high 档选择 Gemini 4 Carbon。
-  # GLM pro 保持当前已配置的 GLM-5.3；Codex pro 使用官方 Astra high。
+  # GLM pro 使用 GLM-5.4；Codex pro 使用官方 Astra high。
   # Claude pro 使用 qwen4-max 并请求 xhigh。
   pro:
     gemini:
@@ -114,9 +114,9 @@ profiles:
       code: { tier: high }
       bug: { tier: high }
     glm:
-      plan: GLM-5.3
-      code: GLM-5.3
-      bug: GLM-5.3
+      plan: GLM-5.4
+      code: GLM-5.4
+      bug: GLM-5.4
     codex:
       plan: { model: gpt-6-astra, effort: high }
       code: { model: gpt-6-astra, effort: high }

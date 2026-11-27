@@ -516,7 +516,7 @@ cd <你的项目> && node ~/.claude/skills/dual-critic/scripts/trivium.cjs init
 
 | 档位 | 三个阶段的 Gemini 侧 | 三个阶段的 GLM 侧 | 用途 |
 | :--- | :--- | :--- | :--- |
-| `default` | `gemini-3.8-flash-high` | `GLM-5.3` | 日常 |
+| `default` | `gemini-3.8-flash-high` | `GLM-5.4` | 日常 |
 | `flash` | `gemini-3.8-flash-high` | `GLM-5.3-Flash` | 省时省配额 |
 
 单次切换用 `--profile <名称>`；只换某一侧的模型用 `--model-<审核者 id>`（优先级更高），

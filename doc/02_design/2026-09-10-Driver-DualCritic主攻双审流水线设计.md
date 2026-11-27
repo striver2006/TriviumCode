@@ -5,7 +5,7 @@
 > - **作者 / 负责人**：Chen Zhenbo（由 Claude Code 起草）
 > - **文件命名**：`2026-09-10-Driver-DualCritic主攻双审流水线设计.md`（`日期-主题`）。本文不带角色后缀——PRD FR-08 的 `日期-主题-角色` 规范约束的是 `.reviews/` 下的审查留痕，`doc/` 下的设计文档只按日期与主题命名，起草方见上方作者行
 > - **创建日期**：2026-09-10
-> - **当前版本**：v1.3.186
+> - **当前版本**：v1.3.187
 > - **状态**：**基线已实现、演进进行中(Completed baseline, evolving)** — 基线 2026-09-11 定稿：M0～M5 全部里程碑达成，
 >   §16.3 十项交付物齐备，`npm run check` 全绿、`trivium doctor --selftest` 14/14。完成情况逐条见 16.1 的「状态」列。
 >   自 v1.3.0 起本文同时承载 **M6～M11 多 Agent 演进**的规范（见 16.1 与 §24 台账），
@@ -3199,7 +3199,7 @@ HOME="<run_home>" "<runtime.node>" "<entry>" \
 profiles:
   default:                       # 日常
     gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
-    glm:    {plan: GLM-5.3,               code: GLM-5.3,               bug: GLM-5.3}
+    glm:    {plan: GLM-5.4,               code: GLM-5.4,               bug: GLM-5.4}
     codex:  {plan: qwen3.8-flash,         code: qwen3.8-flash,         bug: qwen3.8-flash}   # v1.3.45 起（EV-130）
   flash:                         # 省时省配额：只把 GLM 侧换成 Flash
     gemini: {plan: gemini-3.8-flash-high, code: gemini-3.8-flash-high, bug: gemini-3.8-flash-high}
@@ -4189,6 +4189,7 @@ M6～M11 期间需随各里程碑同步的文档，**逐条状态见 §24 台账
 
 | 版本 | 日期 | 变更 |
 | :--- | :--- | :--- |
+| **v1.3.187** | 2026-11-27 | 增加 GLM-5.4 默认支持：产品内置默认配置与本仓共享配置将 GLM `default`/`pro` 档切换为 `GLM-5.4`（`flash` 维持 `GLM-5.3-Flash`，实测 ZCode 0.18.0 仍无独立 `--model`/`--effort` CLI 旗标）；改进 `seedZcodeBuiltinCache`，当宿主机已有旧版 `0.0.0-dev` 缓存而其它版本存在更高 `revision` 时按 endpoint 升级同步且不降级。见 §11.3、§13.1。 |
 | **v1.3.186** | 2026-11-26 | ZCode 交互与后台按同一独立发行包选择入口，后台能力随安装切换重新探测，保留桌面版审核。见 §3.5、§11.3。 |
 | **v1.3.185** | 2026-11-08 | **agy 认证探活降档与预算放宽（用户决策直改，未走双审；VSCode插件Phase3 验收链排障引出）。** 本机实测：探活带 `trivium-critic` agent 上下文（约 6.9 万 input tokens、内部 9 步），`gemini-3.8-flash-high` 低峰 48s、服务端高峰 >100s，贴着内层 print-timeout（外层−20s）连续两轮把「模型侧慢」误报成预检失败项「Antigravity 已认证」，而 `doctor` 探针（不带审查 agent）全绿——两个探测形态的负载差异即「doctor 绿、preflight 挂」的成因。修法两条组合（详见 §5 预检项表该行）：① 探活模型降档——审查档位 slug 尾部 `-high/-medium` 替换为同系 `-low`（`downgradeForAlive`，降档形态不在该侧模型清单时保持原模型，不猜）；② 外层预算 120s → 240s（内层 print-timeout 随之 220s）。降档后探活 ~15s 量级、余量 15 倍，高峰免疫；模型 slug 合法性由预检独立项按审查档位校验，「已认证」的语义纯度反而更高。降档生效时探活详情附「认证探活降档 X → Y」注记。配回归单测（降档命中/清单缺失防御/low 与无后缀原样）。 |
 | **v1.3.184** | 2026-11-07 | **agy 1.5.2 读取工具改名适配（主题 `agy适配1.5.2`，`/dual-run` 全流程，claude+codex 双审——被修侧 gemini 客观不能参与）。** agy 1.5.2 把文件读取工具由 `view_file` 改名 `read_file`（判据实验实证两者同义：白名单双列触发 executor `tool name conflict` 硬错），探针/适配器旧口径把「读取成功」误判为零读取（哨兵复述成功而计数为零）。修复：trivium-critic 资产白名单单名 `read_file`（仅经 1.5.2 验证，1.5.1 未验证不承诺）；`AGY_READ_TOOLS`/`AGY_MUST_HAVE_PATH`/`countTools` 双名并计保历史留痕回放；探针三处提示词不点工具名；parity 表登记 read_file；§3.5 headless 判定改准双名。init.tools 恒为完整注册表不可作白名单证据（M0 重申，P-39 登记）。write_to_file 调用级工具层拒绝证据未取得（两级诱导模型均自觉拒绝），工具层状态「未定」如实登记于 §10.3。产品版本不变（分轨约定），验证：npm test 全量 4035/0、doctor --only agy 全绿（headless_read_ok=true、json_schema_ok=true）、三侧预检通过。 |

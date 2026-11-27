@@ -62,7 +62,7 @@ test('非法模型 slug → 退 64 且零工件（GLM-01 的校验执行点）',
   const fx = await makeFixture({
     topic: TOPIC,
     // 必须先有模型目录：没有目录就无从比对，校验会整段跳过
-    probeModels: { gemini: ['gemini-3.1-pro-high'], glm: ['GLM-5.3'] },
+    probeModels: { gemini: ['gemini-3.1-pro-high'], glm: ['GLM-5.4', 'GLM-5.3'] },
   });
   const r = await assertNoTrace(
     fx.root,
@@ -94,7 +94,7 @@ test('档位组合不合法 → review --start 退 64 且零工件（两条永�
       '    gemini:\n      plan: { model: gemini-3.8-flash, effort: ultra }',
       /「ultra」不在模型「gemini-3\.8-flash」的原生枚举中。可用值：high, low/,
       'gemini 格子写枚举外 effort',
-      { gemini: ['gemini-3.8-flash', 'gemini-3.8-flash-low', 'gemini-3.8-flash-high'], glm: ['GLM-5.3'] },
+      { gemini: ['gemini-3.8-flash', 'gemini-3.8-flash-low', 'gemini-3.8-flash-high'], glm: ['GLM-5.4', 'GLM-5.3'] },
     ],
   ] as const) {
     const fx = await makeFixture({ topic: TOPIC, ...(probeModels ? { probeModels: { gemini: [...probeModels.gemini], glm: [...probeModels.glm] } } : {}) });

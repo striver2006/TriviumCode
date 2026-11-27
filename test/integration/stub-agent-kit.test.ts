@@ -511,6 +511,7 @@ async function makeStubFixtureRepo(): Promise<FixtureRepo> {
       "        - '--disallowed-tools Write,Edit'",
       "      response_field: '.response'",
       '      models:',
+      "        - 'GLM-5.4'",
       "        - 'GLM-5.3'",
       '',
     ].join('\n'),

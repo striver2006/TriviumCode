@@ -206,3 +206,26 @@ test('seedZcodeBuiltinCache 与 prepareZcodeHome 白名单同步内置规则缓�
   await seedZcodeBuiltinCache(emptyHome, path.join(srcHome, 'missing'));
   await assert.rejects(fs.access(path.join(emptyHome, '.zcode')));
 });
+
+test('seedZcodeBuiltinCache 当宿主机已有旧版 0.0.0-dev 时按 endpoint 升级更高 revision 且不降级', async () => {
+  const srcHome = await fs.realpath(await scratchDir('trivium-zseed-upgrade-src-'));
+  const devUpgradeDir = path.join(srcHome, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-up');
+  const relUpgradeDir = path.join(srcHome, '.zcode/v2/runtime/provider/windows-x86_64/4.0.0/endpoint-up');
+  const devKeepDir = path.join(srcHome, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-keep');
+  const relKeepDir = path.join(srcHome, '.zcode/v2/runtime/provider/windows-x86_64/4.0.0/endpoint-keep');
+  for (const d of [devUpgradeDir, relUpgradeDir, devKeepDir, relKeepDir]) await fs.mkdir(d, { recursive: true });
+  await fs.writeFile(path.join(devUpgradeDir, 'zcode-builtin.json'), JSON.stringify({ schemaVersion: 1, revision: 44, config: {} }));
+  await fs.writeFile(path.join(relUpgradeDir, 'zcode-builtin.json'), JSON.stringify({ schemaVersion: 1, revision: 48, config: {} }));
+  await fs.writeFile(path.join(relUpgradeDir, 'zcode-builtin-refresh.json'), JSON.stringify({ schemaVersion: 1, nextEligibleAt: 9999999999999 }));
+  await fs.writeFile(path.join(devKeepDir, 'zcode-builtin.json'), JSON.stringify({ schemaVersion: 1, revision: 49, config: {} }));
+  await fs.writeFile(path.join(relKeepDir, 'zcode-builtin.json'), JSON.stringify({ schemaVersion: 1, revision: 48, config: {} }));
+
+  const targetHome = await fs.realpath(await scratchDir('trivium-zseed-upgrade-dst-'));
+  await seedZcodeBuiltinCache(targetHome, srcHome);
+
+  const upgraded = JSON.parse(await fs.readFile(path.join(targetHome, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-up/zcode-builtin.json'), 'utf8'));
+  assert.equal(upgraded.revision, 48);
+  await fs.access(path.join(targetHome, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-up/zcode-builtin-refresh.json'));
+  const kept = JSON.parse(await fs.readFile(path.join(targetHome, '.zcode/v2/runtime/provider/windows-x86_64/0.0.0-dev/endpoint-keep/zcode-builtin.json'), 'utf8'));
+  assert.equal(kept.revision, 49);
+});

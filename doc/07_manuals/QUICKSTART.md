@@ -251,7 +251,7 @@ agents:
   glm:
     tiers:
       low:  {model: GLM-5.3-Flash}   # ZCode 没有思考等级，档里只写模型
-      high: {model: GLM-5.3}
+      high: {model: GLM-5.4}
 ```
 
 模型名、思考等级与 profile 名都以本机探针为准（`doctor` 探到的模型目录与 `$CODEX_HOME` 下的 profile），写错会在发起前被拦下并列出可用值。档位表 `profiles` 的格子也可以写成 `{tier: high}`，让某个阶段默认用某一档。

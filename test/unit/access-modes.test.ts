@@ -112,6 +112,7 @@ test('模型族只采信声明和回读；工具/供应商不能证明异构，�
   assert.equal(compareRunModels('codex', { model: 'qwen3.8-flash', provider: null, source: 'declared' }, ['claude'], { claude: { ...result, model_effective_source: 'requested' } })[0]!.status, 'unknown');
   for (const id of ['opus', 'sonnet', 'default', 'custom']) assert.equal(modelFamily(id), null);
   assert.equal(modelFamily('k3'), 'kimi'); assert.equal(modelFamily('vendor/GLM-5.3'), 'glm');
+  assert.equal(modelFamily('GLM-5.4'), 'glm'); assert.equal(modelFamily('zai/glm-5.4'), 'glm');
   assert.equal(familyWarnings(qwen).length, 1);
 });
 
