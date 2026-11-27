@@ -17,7 +17,9 @@
 | Codex | 从当前工作区的可见模型中选择。若 CLI 能确定默认模型的强度列表，也可只选强度。 |
 | Claude Code | 按当前供应商显示名称和 CLI 别名选择，强度取该模型与当前 CLI 都支持的值。 |
 | Antigravity | 直接选择带 Low、Medium、High 等标记的模型变体。该变体决定本次强度。 |
-| ZCode | 独立交互发行版 3.18.2 由原生供应商配置决定模型和强度。驾驶舱按实际解析到的交互程序显示能力。 |
+| ZCode | 驾驶舱显示「此 ZCode 入口由原生供应商配置决定模型和强度」时，新会话沿用 ZCode 当前供应商的默认配置。 |
+
+以一台 macOS 机器上的智谱个人 Coding Plan 为例，配置为 `GLM-5.4`、强度 `max`。实际默认值随账号和本机配置而变。可在 ZCode 原生终端查看新会话模型。在 macOS 上，`~/.zcode/v2/provider_config.json` 的 `config.defaultModelSelection` 保存配置的模型 `modelId` 和强度 `options.reasoningLevel`。
 
 选好后点击「① 执行前置链」，再点「② 确认主题并点火」。改动任一选择后需重新预检。如果同一 Driver、主题和入口已有终端，启动配置相同时可以复用。发生冲突时，选「保留原会话」继续原来的工作，或选「保留原终端并另开会话」把新任务交给新配置。两个选择都会保留旧终端。
 
@@ -106,13 +108,13 @@ GLM 主攻已在 macOS arm64、VS Code 1.147.0 和 TriviumCode 核心 1.3.7 上�
 
 ### 选择 GLM 主攻交互入口
 
-在受信任的工作区打开「设置 (JSON)」。已安装官方独立命令时，在登录终端执行 `command -v zcode`，将输出的绝对路径填入设置。例如：
+在受信任的工作区打开「设置 (JSON)」。已安装官方独立命令时，macOS 可在登录终端用 `command -v zcode` 查路径，Windows 可在 PowerShell 用 `Get-Command zcode -All` 查路径。把选定的独立启动器绝对路径填入设置。以下是 macOS 示例。
 
 ```json
 { "trivium.launch.glmInteractivePath": "/Users/bob/.local/bin/zcode" }
 ```
 
-如果使用解压的发行包，在终端执行 `command -v node`，把实际 Node 和脚本的绝对路径分别填入。例如：
+如果使用解压的发行包，在 macOS 上用 `command -v node` 查 Node 路径，Windows 上用 `Get-Command node`。把实际 Node 和脚本的绝对路径分别填入设置。
 
 ```json
 {
@@ -121,7 +123,9 @@ GLM 主攻已在 macOS arm64、VS Code 1.147.0 和 TriviumCode 核心 1.3.7 上�
 }
 ```
 
-路径各占一个字段，可含空格。交互路径留空时优先查用户安装启动器、当前独立发行包，再查扩展宿主 PATH 与常用 bin 目录，最后尝试工作区探针。审核者默认使用同包的 Agent 脚本，桌面版仍支持后台审核。脚本解释器留空时先试探针登记的绝对 Node，再读工作区 wrapper。直接执行的官方 shell 启动器自行查找 node；GUI 终端提示找不到 node 时使用第二种配置。显式错误会在点火时指出设置名。
+路径各占一个字段，可含空格。交互路径留空时，macOS 依次查找 `~/.local/bin/zcode` 和 `~/.zcode/runtime/current/bin/zcode.mjs`。Windows 从用户主目录依次查找 `.local/bin/zcode.exe`、`.zcode/runtime/current/bin/zcode.mjs`、`.local/bin/zcode.cmd`、`.local/bin/zcode`，并可解析指向独立脚本的官方 sh 和 `.cmd` 包装器。随后查扩展宿主 PATH 与常用 bin 目录，最后尝试工作区探针。
+
+审核者默认使用同包的 Agent 脚本，桌面版仍支持后台审核。脚本解释器留空时先试探针登记的绝对 Node，再读工作区 wrapper。直接执行的官方 shell 启动器自行查找 Node。GUI 终端提示找不到 Node 时，可用上面的脚本与 Node 绝对路径配置。显式错误会在点火时指出设置名。
 
 选择 ZCode 主攻，完成前置链并点火。驾驶舱显示实际选择的入口及脚本解释器。默认发送模式下，已识别的独立发行脚本及其官方包装命令首次发送会等待 ZCode 的启动完成日志，再按就绪延迟送入文字。自定义包装器使用设置的就绪延迟。若 120 秒内未读到事件，核对原生终端就绪后可点「重新注入」。在原生终端核对主题和 `/skill dual-run`，待运行卡出现后核对运行号。同主题、同入口点火时，若实际程序或启动配置变化，按冲突提示选择是否另开会话。后台健康行和审核者可用性来自核心探针。续话默认等待该会话的轮次结束，关终端后仍可在 M3 查看原运行。
 
@@ -140,7 +144,7 @@ npm run package      # vsce 打包 .vsix
 ```
 
 开发前在仓库根目录和 `extension/` 分别安装依赖。可用 `VSCODE_EXECUTABLE_PATH` 指定本机 VS Code 主程序；缺省下载测试运行时。包安装回归可用
-`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.3.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
+`TRIVIUM_TEST_VSIX="$PWD/trivium-cockpit-0.3.4.vsix" TRIVIUM_KEEP_WINDOW=1 npm run e2e`。
 脚本打印临时仓、隔离 profile、审批前回读与截图的位置。保留的「入口B验收甲」窗口用于人工审批。
 
 入口 A 真机专项在扩展目录运行。先完成核心构建，指定 VSCODE_EXECUTABLE_PATH 和 TRIVIUM_TEST_VSIX，保留本机已登记的 GLM 后台探针。命令为 `npm run real:glm-entry -- /绝对路径/zcode`，脚本模式为 `npm run real:glm-entry -- /发行目录/bin/zcode.mjs /绝对路径/node`。登录、选模和原生工具确认由操作者完成。
